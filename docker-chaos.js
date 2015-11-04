@@ -37,13 +37,14 @@ var knownOpts = {
     "composeFile" : [String],
     "plan": [String],
     "logPath": [String],
-    "duration": [Number]
+    "duration": [Number],
+    "projectName": [String]
 };
 var shortHands = {};
 
 var options = nopt(knownOpts, shortHands, process.argv);
 
-var dockerComposeFile, planFile, command, duration;
+var dockerComposeFile, planFile, command, duration, project_name;
 
 if (!options.duration) {
     options.duration =  30000;
@@ -61,16 +62,21 @@ try {
 }
 
 if (!options.plan) {
-    console.log("A plan file is needed so we know where to create chaos");
+    console.log("A plan file is needed so we know how to create chaos");
+    process.exit(1);
+}
+if (!options.projectName) {
+    console.log("A project name is needed so we know where to create chaos");
     process.exit(1);
 }
 
 planFile = fs.realpathSync(options.plan);
+project_name = options.projectName;
 
 //
 // Command
 //
-var command = options.argv.remain[0];
+command = options.argv.remain[0];
 if (!command) {
     console.log("you need to pass the command to be executed");
     process.exit(1);
@@ -102,7 +108,7 @@ console.log();
 var planData = fs.readFileSync(planFile);
 
 var chaosPlanFactory = new ChaosPlanFactory();
-var chaosPlan = chaosPlanFactory.getChaosPlan(planData);
+var chaosPlan = chaosPlanFactory.getChaosPlan(planData, project_name);
 
 var exitCode = 0;
 var executor = new Executor();
