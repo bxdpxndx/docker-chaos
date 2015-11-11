@@ -110,52 +110,36 @@ var planData = fs.readFileSync(planFile);
 var chaosPlanFactory = new ChaosPlanFactory();
 var chaosPlan = chaosPlanFactory.getChaosPlan(planData, project_name);
 
-var exitCode = 0;
-var executor = new Executor();
-
-var spinner = new Spinner('Running ... ');
-
-executor.on('start', function() {
-    spinner.start();
-});
-executor.on('pass', function() {
-    console.log(clc.green("Passed"));
-    spinner.stop();
-});
-executor.on('fail', function(stdout, stderr) {
-    exitCode = 1;
-    console.log(clc.red("Failed"));
-    if (stdout.length) {
-        console.log(stdout);
-    }
-    if (stderr.length) {
-        console.log(stderr);
-    }
-    spinner.stop();
-});
-executor.exec(command);
-
-process.on('beforeExit', function() {
-    process.exit(exitCode);
-});
+var chaosPlanExecutor = new ChaosPlanExecutor(dockerComposeFile, chaosPlan);
+var testExecutor = new Executor(command);
 
 var dockerLogger = new DockerLogger(logPath);
 dockerLogger.start(function() {});
 
-var chaosPlanExecutor = new ChaosPlanExecutor();
-chaosPlanExecutor.exec(dockerComposeFile, chaosPlan);
-chaosPlanExecutor.on('dockerContainersChanged', function() {
-    dockerLogger.update(function() {});
-});
-chaosPlanExecutor.on('error', function(err) {
-    console.log(err);
-    process.exit(1);
-});
+function mainloop(lastStartTime, retryCount) {
+    if(retryCount === void 0) {
+        retryCount = 0;
+    }
+    console.log("Running tests... Attempt %s", retryCount + 1);
+    testExecutor.runTests(function(err, result) {
+        if(err) {
+            console.log("Tests errored out!", result);
+            return mainloop(lastStartTime, retryCount + 1);
+        }
+        console.log("Test run succeeded! Number of retries: %s. Time until recovery: %s seconds", retryCount, (new Date() - lastStartTime)/1000);
+        return chaosPlanExecutor.runNextScenario(function(err) {
+            if (err) {
+                console.log("Error setting up scenario");
+            }
+            mainloop(new Date());
+        });
+    })
+}
+
+mainloop(new Date());
 
 setTimeout(function() {
     console.log("Stopping execution");
-    executor.stop();
-    chaosPlanExecutor.stop();
     dockerLogger.stop();
-    process.exit(exitCode);
+    //process.exit();
 }, duration);
